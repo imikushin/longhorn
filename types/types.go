@@ -35,6 +35,8 @@ type Backend interface {
 
 type BackendFactory interface {
 	Create(address string) (Backend, error)
+	Wait(address string) error
+	WaitAll(addresses ...string) error
 }
 
 type Controller interface {

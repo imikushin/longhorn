@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
 	"github.com/gorilla/handlers"
+	"github.com/pkg/errors"
 	"github.com/rancher/longhorn/backend/dynamic"
 	"github.com/rancher/longhorn/backend/file"
 	"github.com/rancher/longhorn/backend/remote"
@@ -87,7 +87,8 @@ func startController(c *cli.Context) error {
 		frontend = f
 	}
 
-	control := controller.NewController(name, dynamic.New(factories), frontend)
+	backendFactory := dynamic.New(factories)
+	control := controller.NewController(name, backendFactory, frontend)
 	server := rest.NewServer(control)
 	router := http.Handler(rest.NewRouter(server))
 
@@ -98,6 +99,12 @@ func startController(c *cli.Context) error {
 	router = handlers.ProxyHeaders(router)
 
 	if len(replicas) > 0 {
+
+		logrus.Infof("Waiting for replicas to come up: %q", replicas)
+		if err := backendFactory.WaitAll(replicas...); err != nil {
+			errors.Wrap(err, "error waiting, giving up")
+		}
+
 		logrus.Infof("Starting with replicas %q", replicas)
 		if err := control.Start(replicas...); err != nil {
 			log.Fatal(err)

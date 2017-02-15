@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/rancher/longhorn/types"
 )
 
@@ -60,4 +61,12 @@ func (ff *Factory) Create(address string) (types.Backend, error) {
 	}
 
 	return &Wrapper{file}, nil
+}
+
+func (ff *Factory) Wait(address string) error {
+	return nil // no need to wait
+}
+
+func (ff *Factory) WaitAll(addresses ...string) error {
+	return errors.New("not implemented: use dynamic factory for WaitAll")
 }

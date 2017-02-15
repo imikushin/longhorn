@@ -3,7 +3,6 @@ package remote
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/rancher/longhorn/replica/rest"
 	"github.com/rancher/longhorn/rpc"
 	"github.com/rancher/longhorn/types"
@@ -175,6 +175,48 @@ func (r *Remote) info() (rest.Replica, error) {
 
 	err = json.NewDecoder(resp.Body).Decode(&replica)
 	return replica, err
+}
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+func waitForOK(attempts int, url string, errCh chan<- error) {
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		logrus.Debugf("%v", errors.Wrapf(err, "error getting '%s'", url))
+		<-time.NewTimer(time.Second).C
+		go waitForOK(attempts-1, url, errCh)
+		return
+	}
+	resp.Body.Close()
+
+	if 200 <= resp.StatusCode && resp.StatusCode < 300 {
+		logrus.Infof("Got OK from '%s'", url)
+		errCh <- nil
+		return
+	}
+	if attempts <= 0 {
+		errCh <- errors.Errorf("giving up getting '%s'", url)
+		return
+	}
+
+	<-time.NewTimer(time.Second).C
+	go waitForOK(attempts-1, url, errCh)
+}
+
+func (rf *Factory) Wait(address string) error {
+	controlAddress, _, _, err := util.ParseAddresses(address)
+	if err != nil {
+		return fmt.Errorf("wait: error parsing address '%s': %v", address, err)
+	}
+	url := "http://" + controlAddress + "/v1"
+	errCh := make(chan error)
+	defer close(errCh)
+	go waitForOK(30, url, errCh)
+	return <-errCh
+}
+
+func (rf *Factory) WaitAll(addresses ...string) error {
+	return errors.New("not implemented: use dynamic factory for WaitAll")
 }
 
 func (rf *Factory) Create(address string) (types.Backend, error) {
